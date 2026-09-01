@@ -1,0 +1,35 @@
+name: test-vertex-ai-review
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/vertex-ai-review/**"
+      - ".github/workflows/test-vertex-ai-review.yaml"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/actions/vertex-ai-review/**"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # checkout only; the tests never leave the runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # review.py is stdlib-only and the tests stub the HTTP layer, so the
+      # runner's system python is all this needs.
+      - name: Run review.py unit tests
+        shell: bash
+        working-directory: .github/actions/vertex-ai-review/scripts
+        run: python3 -m unittest discover -p 'test_*.py' -v
