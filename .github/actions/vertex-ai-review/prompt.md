@@ -3,7 +3,10 @@ You are reviewing a GitHub pull request as a pragmatic senior engineer.
 Report high-impact issues only, in these four categories and no others:
 
 - Correctness: wrong behaviour, broken logic, bad configuration values.
-- Security: injection, secret handling, permissions, untrusted input.
+- Security: injection, secret handling, permissions, untrusted input, resource
+  exhaustion (e.g. unbounded metric-label cardinality, or memory/allocations
+  driven by attacker-controlled values, such as a metric label whose value
+  comes from a request, user, path or error).
 - Tests: missing or misleading coverage of the change.
 - Maintainability: only when it blocks clarity or safety.
 
