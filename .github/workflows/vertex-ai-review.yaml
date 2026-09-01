@@ -1,0 +1,124 @@
+name: "Vertex AI Review"
+
+on:
+  workflow_call:
+    inputs:
+      vertex_project:
+        type: string
+        required: true
+        description: "GCP project hosting the Vertex AI endpoint and holding the Vertex quota."
+      vertex_location:
+        type: string
+        required: false
+        default: "global"
+      vertex_model:
+        type: string
+        required: false
+        default: "gemini-3.7-flash"
+      seed:
+        type: string
+        required: false
+        default: "1"
+        description: "Sampling seed. A fixed value asks for the same answer to the same diff. Change it to get a fresh opinion."
+      thinking_level:
+        type: string
+        required: false
+        default: "medium"
+        description: "Gemini 3 thinking budget: low, medium, or high. Empty leaves the model default."
+      prompt_path:
+        type: string
+        required: false
+        default: ""
+        description: "Repo-relative prompt template. Requires checkout_base: true. Empty uses the action's own prompt.md."
+      checkout_base:
+        type: boolean
+        required: false
+        default: false
+        description: "Check out the BASE repo (never the PR head) so prompt_path can point at a file in this repo."
+      max_diff_bytes:
+        type: string
+        required: false
+        default: "400000"
+      # TODO: expose max_output_tokens here if a caller needs to tune the token
+      # budget. The action accepts it and defaults to 16384. Callers of this
+      # workflow are stuck with that value until it is added.
+      review_event:
+        type: string
+        required: false
+        default: "COMMENT"
+      comment_trigger:
+        type: string
+        required: false
+        default: "@aireview"
+        description: "Comment body that triggers a review on issue_comment events."
+      runs_on:
+        type: string
+        required: false
+        default: "ubuntu-latest"
+
+    secrets:
+      # A service account email and a WIF provider path. Neither is a
+      # credential, and neither works without a GitHub OIDC token from a
+      # repository the provider accepts.
+      GCP_SA_VERTEX_AI_REVIEW:
+        required: true
+      GCP_WIP_VERTEX_AI_REVIEW:
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # pull_request / pull_request_target: run unless the PR is a draft.
+    # issue_comment: run only on a PR, on a matching trigger word, from someone
+    #   with write-level access -- an external commenter must not be able to
+    #   spend Vertex budget.
+    if: >-
+      (github.event_name != 'issue_comment' && github.event.pull_request.draft == false)
+      || (
+        github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && (
+          github.event.comment.body == inputs.comment_trigger
+          || startsWith(github.event.comment.body, format('{0} ', inputs.comment_trigger))
+        )
+        && contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'), github.event.comment.author_association)
+      )
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      contents: read         # checkout of the base repo, when checkout_base is set
+      pull-requests: write   # post the review comment on the PR
+      id-token: write        # mint the GitHub OIDC token that WIF exchanges
+
+    steps:
+      # Base repo only. The PR head is never checked out and never executed --
+      # that is what makes this safe to run from pull_request_target.
+      - name: Checkout base
+        if: ${{ inputs.checkout_base }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Vertex AI review
+        # Self-reference: the action lives in this repo, so a hash pin here
+        # would have to be bumped on every change to it. Callers pin this
+        # reusable workflow instead.
+        uses: paritytech/ci-actions-public/.github/actions/vertex-ai-review@main # zizmor: ignore[unpinned-uses]
+        with:
+          github_token: ${{ github.token }}
+          gcp_service_account: ${{ secrets.GCP_SA_VERTEX_AI_REVIEW }}
+          gcp_workload_identity_provider: ${{ secrets.GCP_WIP_VERTEX_AI_REVIEW }}
+          vertex_project: ${{ inputs.vertex_project }}
+          vertex_location: ${{ inputs.vertex_location }}
+          vertex_model: ${{ inputs.vertex_model }}
+          seed: ${{ inputs.seed }}
+          thinking_level: ${{ inputs.thinking_level }}
+          prompt_path: ${{ inputs.prompt_path }}
+          max_diff_bytes: ${{ inputs.max_diff_bytes }}
+          review_event: ${{ inputs.review_event }}
+          pr_number: ${{ github.event.issue.number || '' }}
