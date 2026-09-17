@@ -206,6 +206,75 @@ class NeedsRetryTest(unittest.TestCase):
         self.assertFalse(review.needs_retry("", "STOP", 0))
 
 
+class ParseInstructionTest(unittest.TestCase):
+    def test_text_after_the_trigger_is_kept(self):
+        self.assertEqual(
+            review.parse_instruction("/aireview focus on the migration", "/aireview"),
+            "focus on the migration",
+        )
+
+    def test_trigger_alone_gives_nothing(self):
+        self.assertEqual(review.parse_instruction("/aireview", "/aireview"), "")
+
+    def test_trigger_is_stripped(self):
+        # The model must never read the trigger word itself.
+        self.assertNotIn(
+            "aireview", review.parse_instruction("/aireview check IAM", "/aireview")
+        )
+
+    def test_surrounding_whitespace_goes(self):
+        self.assertEqual(
+            review.parse_instruction("  /aireview   check IAM  \n", "/aireview"),
+            "check IAM",
+        )
+
+    def test_other_comment_gives_nothing(self):
+        self.assertEqual(review.parse_instruction("looks good to me", "/aireview"), "")
+
+    def test_trigger_must_be_at_the_front(self):
+        self.assertEqual(
+            review.parse_instruction("please run /aireview now", "/aireview"), ""
+        )
+
+    def test_long_instruction_is_cut(self):
+        got = review.parse_instruction("/aireview " + "x" * 5000, "/aireview", 100)
+        self.assertEqual(len(got), 100)
+
+    def test_zero_max_removes_the_limit(self):
+        got = review.parse_instruction("/aireview " + "x" * 5000, "/aireview", 0)
+        self.assertEqual(len(got), 5000)
+
+    def test_empty_inputs_give_nothing(self):
+        self.assertEqual(review.parse_instruction("", "/aireview"), "")
+        self.assertEqual(review.parse_instruction("/aireview x", ""), "")
+
+
+class InstructionBlockTest(unittest.TestCase):
+    def test_empty_gives_empty(self):
+        self.assertEqual(review.instruction_block(""), "")
+        self.assertEqual(review.instruction_block("   "), "")
+
+    def test_text_gets_fenced_and_qualified(self):
+        block = review.instruction_block("focus on IAM")
+        self.assertIn("BEGIN OPERATOR INSTRUCTION", block)
+        self.assertIn("END OPERATOR INSTRUCTION", block)
+        self.assertIn("focus on IAM", block)
+        # The refusal to relax the untrusted-input rules travels with the block.
+        self.assertIn("untrusted input", block)
+
+    def test_block_sits_above_the_untrusted_diff(self):
+        # Placement matters: below the diff, a crafted diff could imitate a
+        # maintainer. The template decides this, so assert on the template.
+        import os as _os
+
+        path = _os.path.join(_os.path.dirname(__file__), "..", "prompt.md")
+        with open(path, encoding="utf-8") as handle:
+            template = handle.read()
+        self.assertLess(
+            template.index("{{INSTRUCTION}}"), template.index("{{DIFF}}")
+        )
+
+
 class DiffNoteTest(unittest.TestCase):
     def test_full_mode_has_no_note(self):
         self.assertEqual(review.diff_note(review.MODE_FULL), "")

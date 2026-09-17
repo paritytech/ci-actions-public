@@ -88,6 +88,33 @@ jobs:
 The comment must be on a PR, and the commenter must be a `MEMBER`, `OWNER`, or
 `COLLABORATOR` — an external contributor cannot spend Vertex budget.
 
+### Steering one review
+
+Text after the trigger word reaches the model as an operator instruction:
+
+```
+/aireview focus on the migration logic and skip the generated files
+```
+
+The trigger word is stripped, so the model never reads it. The rest arrives in
+its own labelled block, placed above the untrusted diff, and capped at 1000
+characters.
+
+Two things it cannot do. The block tells the model to ignore an instruction that
+asks it to relax the rules on untrusted input, so a request to trust the diff
+gets refused. The four categories and the output shape come from a JSON schema
+rather than from the prompt, so `also check reliability` or `give me a table`
+will quietly do nothing.
+
+Expect a steered review to differ more between runs. The fixed seed and the
+schema hold the shape steady, and a free-text instruction moves the content on
+purpose.
+
+**This feature rests on one condition.** Only a `MEMBER`, an `OWNER` or a
+`COLLABORATOR` reaches the job, so the instruction comes from somebody trusted.
+Widening that check would hand an outsider a way to write instructions to the
+model, which is a different thing from the diff being untrusted data.
+
 ### Inputs
 
 | Input               |  Type   | Required | Default            | Description                                                                                     |
@@ -101,7 +128,7 @@ The comment must be on a PR, and the commenter must be a `MEMBER`, `OWNER`, or
 | `checkout_base`     | boolean |    No    | `false`            | Check out the **base** repo (never the PR head) so `prompt_path` can resolve.                    |
 | `max_diff_bytes`    | string  |    No    | `400000`           | Diff bytes sent to the model. Above this the diff is truncated and the model is told so.        |
 | `review_event`      | string  |    No    | `COMMENT`          | `COMMENT` never blocks a merge.                                                                 |
-| `comment_trigger`   | string  |    No    | `@aireview`        | Trigger phrase for `issue_comment` events.                                                      |
+| `comment_trigger`   | string  |    No    | `@aireview`        | Trigger phrase for `issue_comment` events. Text after it becomes an operator instruction.        |
 | `runs_on`           | string  |    No    | `ubuntu-latest`    | Runner label.                                                                                   |
 
 ### Gemini 3 notes

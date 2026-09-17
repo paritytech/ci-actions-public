@@ -38,6 +38,16 @@ inputs:
     required: false
     default: ""
 
+  comment_trigger:
+    description: "Trigger phrase to strip from the front of a triggering comment. Whatever follows it becomes an operator instruction added to the prompt, as in '/aireview focus on the migration'. Only used on issue_comment events."
+    required: false
+    default: "@aireview"
+
+  max_instruction_chars:
+    description: "Longest operator instruction accepted from a comment. Anything past this is cut. 0 removes the limit."
+    required: false
+    default: "1000"
+
   max_diff_bytes:
     description: "Max bytes of diff to send. Above this the diff is truncated and the model is told so."
     required: false
@@ -127,6 +137,11 @@ runs:
         PR_NUMBER: ${{ steps.pr.outputs.number }}
         MAX_DIFF_BYTES: ${{ inputs.max_diff_bytes }}
         SCRIPT: ${{ github.action_path }}/scripts/review.py
+        # Through env, never through the run: block. A comment body in a run:
+        # line is template injection, whoever wrote it.
+        COMMENT_BODY: ${{ github.event.comment.body }}
+        COMMENT_TRIGGER: ${{ inputs.comment_trigger }}
+        MAX_INSTRUCTION_CHARS: ${{ inputs.max_instruction_chars }}
       run: |
         set -euo pipefail
         python3 "$SCRIPT" fetch-diff --out pr.diff --meta pr.meta.json
