@@ -50,7 +50,7 @@ on:
         type: string
         required: false
         default: "@aireview"
-        description: "Comment body that triggers a review on issue_comment events."
+        description: "Comment body that triggers a review on issue_comment events. Text after it becomes an operator instruction, as in '/aireview focus on the migration'."
       runs_on:
         type: string
         required: false
@@ -88,6 +88,9 @@ jobs:
         )
         && contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'), github.event.comment.author_association)
       )
+    # The association check above is what makes the operator instruction safe.
+    # Text after the trigger word goes into the prompt, so widening this list
+    # would hand an outsider a way to write instructions to the model.
     runs-on: ${{ inputs.runs_on }}
     permissions:
       contents: read         # checkout of the base repo, when checkout_base is set
@@ -122,3 +125,4 @@ jobs:
           max_diff_bytes: ${{ inputs.max_diff_bytes }}
           review_event: ${{ inputs.review_event }}
           pr_number: ${{ github.event.issue.number || '' }}
+          comment_trigger: ${{ inputs.comment_trigger }}
